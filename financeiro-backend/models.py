@@ -1,8 +1,6 @@
 from sqlalchemy import create_engine, Column, Integer, String, Float, ForeignKey
-from sqlalchemy.orm import relationship, sessionmaker, declarative_base
-from sqlalchemy.ext.declarative import DeclarativeMeta
-
-Base: DeclarativeMeta = declarative_base()
+from sqlalchemy.orm import relationship, sessionmaker
+from database import Base
 
 class Denominacao(Base):
     __tablename__ = 'denominacoes'
@@ -54,19 +52,21 @@ class Mes(Base):
     saldo_inicial = Column(Float, default=0.0)
     saldo_final = Column(Float, default=0.0)
     congregacao = relationship("Congregacao", back_populates="meses")
-    semanas = relationship("Semana", back_populates="mes")
+    semanas = relationship("Semana", back_populates="mes", cascade="all, delete-orphan")
 
 class Semana(Base):
     __tablename__ = 'semanas'
     id = Column(Integer, primary_key=True, index=True)
     numero = Column(Integer, nullable=False)
     mes_id = Column(Integer, ForeignKey('meses.id'))
+    data_inicio = Column(String, nullable=True)
+    data_fim = Column(String, nullable=True)
     saldo_inicial_semana = Column(Float, default=0.0)
     renda_semanal = Column(Float, default=0.0)
     comissao = Column(Float, default=0.0)
     saldo_final_semana = Column(Float, default=0.0)
     mes = relationship("Mes", back_populates="semanas")
-    despesas = relationship("Despesa", back_populates="semana")
+    despesas = relationship("Despesa", back_populates="semana", cascade="all, delete-orphan")
 
 class Despesa(Base):
     __tablename__ = 'despesas'
@@ -75,14 +75,3 @@ class Despesa(Base):
     valor = Column(Float, nullable=False)
     semana_id = Column(Integer, ForeignKey('semanas.id'))
     semana = relationship("Semana", back_populates="despesas")
-
-DATABASE_URL = "sqlite:///./financeiro.db"
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()

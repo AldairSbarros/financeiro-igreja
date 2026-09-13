@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/ # Seu ambiente virtual atual
+
+# Database
+*.db # Ignora todos os arquivos .db, incluindo financeiro.db
+
+# Logs
+*.log
+
+# IDEs
+.vscode/
+.idea/
+
+# OS generated files
+.DS_Store
+Thumbs.db
