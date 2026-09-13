@@ -6,9 +6,9 @@ class Denominacao(Base):
     __tablename__ = 'denominacoes'
     id = Column(Integer, primary_key=True, index=True)
     nome = Column(String, unique=True, index=True, nullable=False)
-    areas = relationship("AreaEclesiastica", back_populates="denominacao")
-    congregacoes = relationship("Congregacao", back_populates="denominacao")
-    usuarios = relationship("Usuario", back_populates="denominacao")
+    areas = relationship("AreaEclesiastica", back_populates="denominacao", cascade="all, delete-orphan")
+    congregacoes = relationship("Congregacao", back_populates="denominacao", cascade="all, delete-orphan")
+    usuarios = relationship("Usuario", back_populates="denominacao", cascade="all, delete-orphan")
 
 class AreaEclesiastica(Base):
     __tablename__ = 'areas_eclesiasticas'
@@ -16,8 +16,8 @@ class AreaEclesiastica(Base):
     nome = Column(String, nullable=False)
     denominacao_id = Column(Integer, ForeignKey('denominacoes.id'), nullable=False)
     denominacao = relationship("Denominacao", back_populates="areas")
-    congregacoes = relationship("Congregacao", back_populates="area")
-    usuarios_responsavel = relationship("Usuario", back_populates="area_responsavel")
+    congregacoes = relationship("Congregacao", back_populates="area", cascade="all, delete-orphan")
+    usuarios_responsavel = relationship("Usuario", back_populates="area_responsavel", cascade="all, delete-orphan")
 
 class Congregacao(Base):
     __tablename__ = 'congregacoes'
@@ -28,8 +28,8 @@ class Congregacao(Base):
     area_id = Column(Integer, ForeignKey('areas_eclesiasticas.id'), nullable=True)
     denominacao = relationship("Denominacao", back_populates="congregacoes")
     area = relationship("AreaEclesiastica", back_populates="congregacoes")
-    meses = relationship("Mes", back_populates="congregacao")
-    usuarios = relationship("Usuario", back_populates="congregacao")
+    meses = relationship("Mes", back_populates="congregacao", cascade="all, delete-orphan")
+    usuarios = relationship("Usuario", back_populates="congregacao", cascade="all, delete-orphan")
 
 class Usuario(Base):
     __tablename__ = 'usuarios'
