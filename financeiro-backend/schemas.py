@@ -1,10 +1,13 @@
 from pydantic import BaseModel, EmailStr, ConfigDict
 from typing import List, Optional
+from datetime import date # Importar date para o campo data_registro
 
 # --- Schemas de Despesa ---
 class DespesaBase(BaseModel):
     descricao: str
     valor: float
+    data_registro: Optional[date] = None # Adicionado data_registro opcional para despesa
+    recorrente: Optional[bool] = False # NOVA FLAG: Despesa Recorrente
 
 class DespesaCreate(DespesaBase):
     pass
@@ -13,26 +16,61 @@ class Despesa(DespesaBase):
     id: int
     semana_id: int
     model_config = ConfigDict(from_attributes=True)
+# --- Schemas de Renda (Dízimos e Ofertas) ---
+class RendaBase(BaseModel):
+    tipo: str # Ex: "Dízimo", "Oferta", "Culto de Oração", "Celebração"
+    valor: float
+    data_registro: date # Usar o tipo date
+    numero_recibo: Optional[str] = None
+    observacao: Optional[str] = None
+    metodo_pagamento: str # Ex: "Pix", "Espécie", "Transferência", "Cartão"
+    # congregacao_id e semana_id virão do path ou do contexto do usuário
+    dizimista_ofertante_id: Optional[int] = None
+
+class RendaCreate(RendaBase):
+    pass
+
+class RendaUpdate(RendaBase):
+    tipo: Optional[str] = None
+    valor: Optional[float] = None
+    data_registro: Optional[date] = None
+    numero_recibo: Optional[str] = None
+    observacao: Optional[str] = None
+    metodo_pagamento: Optional[str] = None
+    dizimista_ofertante_id: Optional[int] = None
+
+class Renda(RendaBase):
+    id: int
+    congregacao_id: int
+    semana_id: int
+    model_config = ConfigDict(from_attributes=True)
+
 # --- Schemas de Semana (Lógica Simples) ---
 class SemanaBase(BaseModel):
     numero: int
-    renda_semanal: float
+    # renda_semanal não é mais um campo de entrada direto para criação/base
     data_inicio: Optional[str] = None
     data_fim: Optional[str] = None
 
 class SemanaCreate(SemanaBase):
     despesas: List[DespesaCreate] = []
+    # rendas: List[RendaCreate] = [] # Isso será tratado em um endpoint separado ou modificado
 
 class Semana(SemanaBase):
     id: int
     mes_id: int
+    saldo_inicial_semana: float # Adicionado de volta
+    renda_semanal: Optional[float] = 0.0 # Agora é um valor calculado, opcional na saída
     comissao: float
     saldo_final_semana: float
     despesas: List[Despesa] = []
+    rendas: List[Renda] = [] # Incluir rendas para visualização
     model_config = ConfigDict(from_attributes=True)
+
 # --- Schemas de Mês ---
 class MesBase(BaseModel):
     nome: str
+    fechado: Optional[bool] = False # Adicionado campo fechado
 
 class MesCreate(MesBase):
     congregacao_id: int
@@ -45,6 +83,33 @@ class Mes(MesBase):
     saldo_final: float
     semanas: List[Semana] = []
     model_config = ConfigDict(from_attributes=True)
+
+# --- NOVA: Schemas de Análise de Mês ---
+class RendaItemResumo(BaseModel):
+    tipo: str
+    total: float
+    quantidade: int
+
+class SemanaResumo(BaseModel):
+    numero_semana: int
+    label: str
+    entradas: float
+    saidas: float
+    saldo_acumulado: float
+
+class MetodoPagamentoResumo(BaseModel):
+    metodo_pagamento: str
+    total: float
+    quantidade: int
+
+class AnaliseMes(BaseModel):
+    mes_id: int
+    nome_mes: str
+    series_entradas_saida: List[SemanaResumo]
+    principais_rendas: List[RendaItemResumo]
+    resumo_pagamentos: List[MetodoPagamentoResumo]
+    totais: dict
+
 # --- Schema do Balancete (Lógica Simples) ---
 class BalanceteMensal(BaseModel):
     nome_mes: str
@@ -54,7 +119,26 @@ class BalanceteMensal(BaseModel):
     total_despesas: float # Despesas Manuais
     saldo_final_consolidado: float
 
-# --- Schemas de Hierarquia e Usuários (Sem alterações) ---
+# --- Schemas de Dizimista/Ofertante ---
+class DizimistaOfertanteBase(BaseModel):
+    nome: str
+    email: Optional[EmailStr] = None
+    telefone: Optional[str] = None
+
+class DizimistaOfertanteCreate(DizimistaOfertanteBase):
+    pass
+
+class DizimistaOfertanteUpdate(DizimistaOfertanteBase):
+    nome: Optional[str] = None
+    email: Optional[EmailStr] = None
+    telefone: Optional[str] = None
+
+class DizimistaOfertante(DizimistaOfertanteBase):
+    id: int
+    congregacao_id: int
+    model_config = ConfigDict(from_attributes=True)
+
+# --- Schemas de Hierarquia e Usuários ---
 class CongregacaoBase(BaseModel):
     nome: str
     numero_co: Optional[str] = None
@@ -73,7 +157,10 @@ class Congregacao(CongregacaoBase):
     id: int
     denominacao_id: int
     area_id: Optional[int] = None
+    dizimistas: List[DizimistaOfertante] = [] # Novo relacionamento para visualização
+    rendas: List[Renda] = [] # Novo relacionamento para visualização
     model_config = ConfigDict(from_attributes=True)
+
 class AreaEclesiasticaBase(BaseModel):
     nome: str
 
@@ -89,6 +176,7 @@ class AreaEclesiastica(AreaEclesiasticaBase):
     denominacao_id: int
     congregacoes: List[Congregacao] = []
     model_config = ConfigDict(from_attributes=True)
+
 class DenominacaoBase(BaseModel):
     nome: str
 
@@ -103,6 +191,7 @@ class Denominacao(DenominacaoBase):
     areas: List[AreaEclesiastica] = []
     congregacoes: List[Congregacao] = []
     model_config = ConfigDict(from_attributes=True)
+
 class UsuarioBase(BaseModel):
     email: EmailStr
 
@@ -112,6 +201,10 @@ class UsuarioCreate(UsuarioBase):
     denominacao_id: int
     area_id: Optional[int] = None
     congregacao_id: Optional[int] = None
+
+class UsuarioUpdatePassword(BaseModel):
+    senha_atual: str
+    nova_senha: str
 
 class Usuario(UsuarioBase):
     id: int
@@ -123,10 +216,20 @@ class Usuario(UsuarioBase):
     congregacao_id: Optional[int] = None
     congregacao: Optional[CongregacaoBase] = None # Adicionado
     model_config = ConfigDict(from_attributes=True)
+
 class Token(BaseModel):
     access_token: str
     token_type: str
 
 class TokenData(BaseModel):
     email: Optional[str] = None
+
+class DespesaCreateData(BaseModel):
+  descricao: str
+  valor: float
+  data_registro: Optional[date] = None
+  # Nova flag que indica se a despesa será recorrente
+  recorrente: Optional[bool] = False
+  # Periodicidade aceita: "semanal", "quinzenal", "mensal"
+  periodicidade: Optional[str] = None
 

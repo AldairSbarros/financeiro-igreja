@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import desc
+from sqlalchemy import desc, func # Importar func para somar
 import models, schemas, security
 
 def get_user_by_email(db: Session, email: str):
@@ -23,9 +23,9 @@ def update_denominacao(db: Session, denominacao_id: int, denominacao: schemas.De
         update_data = denominacao.model_dump(exclude_unset=True)
         for key, value in update_data.items():
             setattr(db_denominacao, key, value)
-    db.add(db_denominacao)
-    db.commit()
-    db.refresh(db_denominacao)
+        db.add(db_denominacao)
+        db.commit()
+        db.refresh(db_denominacao)
     return db_denominacao
 
 def delete_denominacao(db: Session, denominacao_id: int):
@@ -64,9 +64,9 @@ def update_area_eclesiastica(db: Session, area_id: int, area: schemas.AreaEclesi
         update_data = area.model_dump(exclude_unset=True)
         for key, value in update_data.items():
             setattr(db_area, key, value)
-    db.add(db_area)
-    db.commit()
-    db.refresh(db_area)
+        db.add(db_area)
+        db.commit()
+        db.refresh(db_area)
     return db_area
 
 def delete_area_eclesiastica(db: Session, area_id: int):
@@ -114,9 +114,9 @@ def update_congregacao(db: Session, congregacao_id: int, congregacao: schemas.Co
         update_data = congregacao.model_dump(exclude_unset=True)
         for key, value in update_data.items():
             setattr(db_congregacao, key, value)
-    db.add(db_congregacao)
-    db.commit()
-    db.refresh(db_congregacao)
+        db.add(db_congregacao)
+        db.commit()
+        db.refresh(db_congregacao)
     return db_congregacao
 
 def delete_congregacao(db: Session, congregacao_id: int):
@@ -165,6 +165,85 @@ def create_congregacao(db: Session, congregacao: schemas.CongregacaoCreate):
     db.refresh(db_congregacao)
     return db_congregacao
 
+# --- Funções CRUD para Dizimistas/Ofertantes ---
+def create_dizimista_ofertante(db: Session, dizimista: schemas.DizimistaOfertanteCreate, congregacao_id: int):
+    db_dizimista = models.DizimistaOfertante(**dizimista.model_dump(), congregacao_id=congregacao_id)
+    db.add(db_dizimista)
+    db.commit()
+    db.refresh(db_dizimista)
+    return db_dizimista
+
+def get_dizimista_ofertante_by_id(db: Session, dizimista_id: int):
+    return db.query(models.DizimistaOfertante).filter(models.DizimistaOfertante.id == dizimista_id).first()
+
+def get_dizimistas_ofertantes_by_congregacao(db: Session, congregacao_id: int, skip: int = 0, limit: int = 100):
+    return (
+        db.query(models.DizimistaOfertante)
+        .filter(models.DizimistaOfertante.congregacao_id == congregacao_id)
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+
+def update_dizimista_ofertante(db: Session, dizimista_id: int, dizimista: schemas.DizimistaOfertanteUpdate):
+    db_dizimista = db.query(models.DizimistaOfertante).filter(models.DizimistaOfertante.id == dizimista_id).first()
+    if db_dizimista:
+        update_data = dizimista.model_dump(exclude_unset=True)
+        for key, value in update_data.items():
+            setattr(db_dizimista, key, value)
+        db.add(db_dizimista)
+        db.commit()
+        db.refresh(db_dizimista)
+    return db_dizimista
+
+def delete_dizimista_ofertante(db: Session, dizimista_id: int):
+    db_dizimista = db.query(models.DizimistaOfertante).filter(models.DizimistaOfertante.id == dizimista_id).first()
+    if db_dizimista:
+        db.delete(db_dizimista)
+        db.commit()
+    return db_dizimista
+
+# --- Funções CRUD para Rendas ---
+def create_renda(db: Session, renda: schemas.RendaCreate, congregacao_id: int, semana_id: int):
+    db_renda = models.Renda(**renda.model_dump(exclude_unset=True),
+                            congregacao_id=congregacao_id,
+                            semana_id=semana_id)
+    db.add(db_renda)
+    db.commit()
+    db.refresh(db_renda)
+    return db_renda
+
+def get_renda_by_id(db: Session, renda_id: int):
+    return db.query(models.Renda).filter(models.Renda.id == renda_id).first()
+
+def get_rendas_by_semana(db: Session, semana_id: int, skip: int = 0, limit: int = 100):
+    return (
+        db.query(models.Renda)
+        .filter(models.Renda.semana_id == semana_id)
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+
+def update_renda(db: Session, renda_id: int, renda: schemas.RendaUpdate):
+    db_renda = db.query(models.Renda).filter(models.Renda.id == renda_id).first()
+    if db_renda:
+        update_data = renda.model_dump(exclude_unset=True)
+        for key, value in update_data.items():
+            setattr(db_renda, key, value)
+        db.add(db_renda)
+        db.commit()
+        db.refresh(db_renda)
+    return db_renda
+
+def delete_renda(db: Session, renda_id: int):
+    db_renda = db.query(models.Renda).filter(models.Renda.id == renda_id).first()
+    if db_renda:
+        db.delete(db_renda)
+        db.commit()
+    return db_renda
+
+# --- Funções financeiras principais (atualizadas) ---
 def create_mes(db: Session, mes: schemas.MesCreate):
 
     # Encontra o último mês para a congregação
@@ -195,7 +274,7 @@ def create_mes(db: Session, mes: schemas.MesCreate):
 
 def create_semana(db: Session, semana: schemas.SemanaCreate, mes_id: int):
     # Busca o mês e suas semanas
-    mes = db.query(models.Mes).options(joinedload(models.Mes.semanas)).filter(models.Mes.id == mes_id).first()
+    mes = db.query(models.Mes).options(joinedload(models.Mes.semanas).joinedload(models.Semana.rendas)).filter(models.Mes.id == mes_id).first() # Modificado para carregar rendas
     if not mes:
         return None # Ou lançar uma exceção
 
@@ -205,19 +284,20 @@ def create_semana(db: Session, semana: schemas.SemanaCreate, mes_id: int):
     else:
         saldo_inicial_semana = mes.saldo_inicial
 
-    # Calcula os valores da semana
-    comissao = semana.renda_semanal * 0.33
+    # A renda_semanal será calculada APÓS a criação das rendas. Começa em 0.0.
+    renda_semanal = 0.0
+    comissao = renda_semanal * 0.33 # Comissão inicial é 0
     total_despesas = sum(d.valor for d in semana.despesas)
     saldo_final_semana = saldo_inicial_semana + comissao - total_despesas
 
-        # Cria a nova semana
+    # Cria a nova semana
     db_semana = models.Semana(
         numero=semana.numero,
         mes_id=mes_id,
         data_inicio=semana.data_inicio,
         data_fim=semana.data_fim,
         saldo_inicial_semana=saldo_inicial_semana,
-        renda_semanal=semana.renda_semanal,
+        renda_semanal=renda_semanal, # Inicializa com 0.0
         comissao=comissao,
         saldo_final_semana=saldo_final_semana,
     )
@@ -231,11 +311,52 @@ def create_semana(db: Session, semana: schemas.SemanaCreate, mes_id: int):
         )
         db.add(db_despesa)
 
-    # Atualiza o saldo final do mês
-    mes.saldo_final = saldo_final_semana
+    # As rendas serão adicionadas via endpoint separado, então não as criamos aqui
+
+    # Atualiza o saldo final do mês - isso será recalculado por recalcular_saldos_mes
+    # mes.saldo_final = saldo_final_semana # Será movido para recalcular_saldos_mes
 
     db.add(db_semana)
     db.commit()
     db.refresh(db_semana)
     return db_semana
+
+
+def recalcular_saldos_mes(db: Session, mes_id: int):
+    """
+    Função central para recalcular todos os saldos de um mês.
+    Deve ser chamada após qualquer alteração em semanas, despesas ou rendas.
+    """
+    db_mes = (
+        db.query(models.Mes)
+        .options(joinedload(models.Mes.semanas).joinedload(models.Semana.despesas))
+        .options(joinedload(models.Mes.semanas).joinedload(models.Semana.rendas)) # Carrega as rendas
+        .filter(models.Mes.id == mes_id)
+        .first()
+    )
+    if not db_mes: return
+
+    semanas_do_mes = sorted(db_mes.semanas, key=lambda s: s.numero) # Garantir ordem das semanas
+
+    saldo_acumulado = db_mes.saldo_inicial
+
+    for s in semanas_do_mes:
+        # CALCULA A RENDA SEMANAL A PARTIR DAS RENDAS DETALHADAS
+        renda_bruta_semana = sum(r.valor for r in s.rendas) # SOMA TODAS AS RENDAS DA SEMANA
+        s.renda_semanal = renda_bruta_semana # Atualiza o campo da semana
+
+        comissao = renda_bruta_semana * 0.33
+        s.comissao = comissao
+
+        total_despesas_semana = sum(d.valor for d in s.despesas) # Sum over s.despesas directly
+
+        s.saldo_inicial_semana = saldo_acumulado
+        s.saldo_final_semana = (saldo_acumulado + comissao) - total_despesas_semana
+
+        saldo_acumulado = s.saldo_final_semana
+        db.add(s)
+
+    db_mes.saldo_final = saldo_acumulado
+    db.add(db_mes)
+    db.commit()
 

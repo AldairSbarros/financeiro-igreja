@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, Float, ForeignKey
+from sqlalchemy import create_engine, Column, Integer, String, Float, ForeignKey, Date, Boolean # Importado Date e Boolean
 from sqlalchemy.orm import relationship, sessionmaker
 from database import Base
 
@@ -30,6 +30,34 @@ class Congregacao(Base):
     area = relationship("AreaEclesiastica", back_populates="congregacoes")
     meses = relationship("Mes", back_populates="congregacao", cascade="all, delete-orphan")
     usuarios = relationship("Usuario", back_populates="congregacao", cascade="all, delete-orphan")
+    dizimistas = relationship("DizimistaOfertante", back_populates="congregacao", cascade="all, delete-orphan") # Novo relacionamento
+    rendas = relationship("Renda", back_populates="congregacao", cascade="all, delete-orphan") # Novo relacionamento
+
+class DizimistaOfertante(Base): # Novo Modelo
+    __tablename__ = 'dizimistas_ofertantes'
+    id = Column(Integer, primary_key=True, index=True)
+    nome = Column(String, nullable=False)
+    congregacao_id = Column(Integer, ForeignKey('congregacoes.id'), nullable=False)
+    email = Column(String, nullable=True)
+    telefone = Column(String, nullable=True)
+    congregacao = relationship("Congregacao", back_populates="dizimistas")
+    rendas = relationship("Renda", back_populates="dizimista_ofertante", cascade="all, delete-orphan") # Novo relacionamento
+
+class Renda(Base): # Novo Modelo
+    __tablename__ = 'rendas'
+    id = Column(Integer, primary_key=True, index=True)
+    tipo = Column(String, nullable=False) # Ex: "Dízimo", "Oferta", "Culto de Oração", "Celebração"
+    valor = Column(Float, nullable=False)
+    data_registro = Column(Date, nullable=False) # Data em que a renda foi lançada/ocorrida
+    numero_recibo = Column(String, nullable=True)
+    observacao = Column(String, nullable=True)
+    metodo_pagamento = Column(String, nullable=False) # Ex: "Pix", "Espécie", "Transferência", "Cartão"
+    congregacao_id = Column(Integer, ForeignKey('congregacoes.id'), nullable=False)
+    semana_id = Column(Integer, ForeignKey('semanas.id'), nullable=False)
+    dizimista_ofertante_id = Column(Integer, ForeignKey('dizimistas_ofertantes.id'), nullable=True) # Opcional
+    congregacao = relationship("Congregacao", back_populates="rendas")
+    semana = relationship("Semana", back_populates="rendas")
+    dizimista_ofertante = relationship("DizimistaOfertante", back_populates="rendas")
 
 class Usuario(Base):
     __tablename__ = 'usuarios'
@@ -51,6 +79,7 @@ class Mes(Base):
     nome = Column(String, index=True, nullable=False)
     saldo_inicial = Column(Float, default=0.0)
     saldo_final = Column(Float, default=0.0)
+    fechado = Column(Boolean, default=False) # Novo campo para indicar se o mês está fechado
     congregacao = relationship("Congregacao", back_populates="meses")
     semanas = relationship("Semana", back_populates="mes", cascade="all, delete-orphan")
 
@@ -62,16 +91,23 @@ class Semana(Base):
     data_inicio = Column(String, nullable=True)
     data_fim = Column(String, nullable=True)
     saldo_inicial_semana = Column(Float, default=0.0)
-    renda_semanal = Column(Float, default=0.0)
+    renda_semanal = Column(Float, default=0.0, nullable=True) # Alterado para nullable=True e será calculado
     comissao = Column(Float, default=0.0)
     saldo_final_semana = Column(Float, default=0.0)
     mes = relationship("Mes", back_populates="semanas")
     despesas = relationship("Despesa", back_populates="semana", cascade="all, delete-orphan")
+    rendas = relationship("Renda", back_populates="semana", cascade="all, delete-orphan") # Novo relacionamento
 
 class Despesa(Base):
     __tablename__ = 'despesas'
     id = Column(Integer, primary_key=True, index=True)
     descricao = Column(String, nullable=False)
     valor = Column(Float, nullable=False)
+    data_registro = Column(Date, nullable=True) # Adicionado data_registro na despesa
+    # Novo campo: indica se a despesa deve ser gerada automaticamente nas próximas semanas
+    recorrente = Column(Boolean, default=False, nullable=False)
+    # Periodicidade aceita: "semanal", "quinzenal", "mensal"
+    periodicidade = Column(String, nullable=True)
     semana_id = Column(Integer, ForeignKey('semanas.id'))
     semana = relationship("Semana", back_populates="despesas")
+

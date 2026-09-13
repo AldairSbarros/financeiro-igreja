@@ -6,17 +6,18 @@ Este é o backend do sistema de controle financeiro eclesiástico, construído c
 
 ## Funcionalidades Principais
 
-*   **Autenticação e Autorização (JWT):** Gerenciamento de usuários com diferentes níveis de acesso (administrador, supervisor de denominação, supervisor de área, tesoureiro).
+*   **Autenticação e Autorização (JWT):** Gerenciamento de usuários com controle de acesso rigoroso baseado em funções (Administrador, Supervisor de Denominação, Supervisor de Área, Tesoureiro), garantindo que cada usuário acesse apenas os dados de sua jurisdição.
 *   **Gestão de Hierarquia Eclesiástica (CRUD):**
-    *   Criação, leitura, atualização e exclusão de Denominações.
-    *   Criação, leitura, atualização e exclusão de Áreas Eclesiásticas.
-    *   Criação, leitura, atualização e exclusão de Congregações.
-*   **Gestão Financeira:**
-    *   Lançamento e acompanhamento de finanças por Mês e Semana.
-    *   Registro de despesas detalhadas.
-    *   Recálculo automático de saldos com base em receitas e despesas.
-*   **Relatórios:** Geração de balancetes financeiros mensais em formato PDF.
-*   **Segurança Multitenant:** Controle de acesso rigoroso para garantir que os usuários só possam visualizar e manipular dados pertencentes à sua respectiva denominação, área ou congregação, conforme sua função.
+    *   Gestão de Denominações, Áreas Eclesiásticas e Congregações.
+    *   Proteção contra exclusão acidental (soft-block) que impede deletar instâncias se existirem dados dependentes.
+*   **Gestão de Membros/Dizimistas:** Cadastro e histórico de dizimistas e ofertantes.
+*   **Controle Financeiro Rigoroso:**
+    *   Gestão de finanças organizadas por Meses e Semanas.
+    *   Lançamento de Rendas (Dízimos e Ofertas) com validação de período e histórico do dizimista.
+    *   Lançamento de Despesas por semana, com suporte a data exata.
+    *   **Fechamento de Mês:** Trava de segurança que impede edições e exclusões de dados financeiros após o fechamento do mês (reabertura permitida apenas para administradores).
+    *   Recálculo automático e inteligente de saldos a cada nova inserção ou exclusão.
+*   **Relatórios:** Geração de balancetes financeiros mensais em formato PDF detalhado, com dados da denominação no cabeçalho e detalhamento item a item das rendas e despesas semanais.
 
 ## Estrutura do Projeto
 
