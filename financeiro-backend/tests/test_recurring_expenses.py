@@ -1,14 +1,16 @@
-"""python financeiro-backend/tests/test_recurring_expenses.py
 import pytest
 from datetime import date, timedelta
 
-from financeiro.db import crud, models
-from financeiro.api import schemas, main, utils
+import crud
+import models
+import schemas
+import main
+import utils
 
-# O conftest já fornece os fixtures: client, db_session, setup_data, mock_get_current_user_factory
+# O conftest ja fornece os fixtures: client, db_session, setup_data, mock_get_current_user_factory
 
 def criar_mes_e_semanas(db, congregacao_id):
-    """Cria um mês com duas semanas e retorna o objeto Mes."""
+    """Cria um mes com duas semanas e retorna o objeto Mes."""
     mes = crud.create_mes(
         db,
         schemas.MesCreate(
@@ -29,7 +31,7 @@ def criar_mes_e_semanas(db, congregacao_id):
         ),
         mes_id=mes.id,
     )
-    # Semana 2 (próxima)
+    # Semana 2 (proxima)
     semana2 = crud.create_semana(
         db,
         schemas.SemanaCreate(
@@ -45,7 +47,7 @@ def criar_mes_e_semanas(db, congregacao_id):
 
 def test_duplicar_despesas_recorrentes(client, db_session, setup_data, mock_get_current_user_factory):
     # -------------------------------------------------------------------------
-    # 1️⃣ Preparar dados (congregação, mês, semanas e despesa recorrente)
+    # 1. Preparar dados (congregacao, mes, semanas e despesa recorrente)
     # -------------------------------------------------------------------------
     congregacao = setup_data["congregacoes"]["congregacao1_area1"]
     mes, semana1, semana2 = criar_mes_e_semanas(db_session, congregacao.id)
@@ -65,13 +67,13 @@ def test_duplicar_despesas_recorrentes(client, db_session, setup_data, mock_get_
     db_session.commit()
 
     # -------------------------------------------------------------------------
-    # 2️⃣ Mockar o usuário atual (administrador tem permissão)
+    # 2. Mockar o usuario atual (administrador tem permissao)
     # -------------------------------------------------------------------------
     admin_user = setup_data["users"]["admin"]
-    main.app.dependency_overrides[utils.get_current_user] = mock_get_current_user_factory(admin_user)
+    main.app.dependency_overrides[main.get_current_user] = mock_get_current_user_factory(admin_user)
 
     # -------------------------------------------------------------------------
-    # 3️⃣ Chamar o endpoint que duplica as despesas recorrentes
+    # 3. Chamar o endpoint que duplica as despesas recorrentes
     # -------------------------------------------------------------------------
     response = client.post("/despesas/recorrentes/duplicar")
     assert response.status_code == 200, f"Erro inesperado: {response.text}"
@@ -82,30 +84,30 @@ def test_duplicar_despesas_recorrentes(client, db_session, setup_data, mock_get_
     despesa_nova = despesas_geradas[0]
 
     # -------------------------------------------------------------------------
-    # 4️⃣ Validar que a nova despesa está na semana correta (Semana 2)
+    # 4. Validar que a nova despesa esta na semana correta (Semana 2)
     # -------------------------------------------------------------------------
-    # Busca a despesa no banco para garantir que as relações estão carregadas
+    # Busca a despesa no banco para garantir que as relacoes estao carregadas
     despesa_no_db = db_session.query(models.Despesa).filter(models.Despesa.id == despesa_nova["id"]).first()
-    assert despesa_no_db is not None, "Despesa duplicada não encontrada no BD"
+    assert despesa_no_db is not None, "Despesa duplicada nao encontrada no BD"
 
-    # Deve estar associada à semana 2 (próxima semana)
-    assert despesa_no_db.semana_id == semana2.id, "Despesa duplicada não foi atribuída à próxima semana"
+    # Deve estar associada a semana 2 (proxima semana)
+    assert despesa_no_db.semana_id == semana2.id, "Despesa duplicada nao foi atribuida a proxima semana"
 
     # Os campos recorrentes devem ser preservados
     assert despesa_no_db.recorrente is True
     assert despesa_no_db.periodicidade == "semanal"
 
     # -------------------------------------------------------------------------
-    # 5️⃣ Verificar recalculo de saldos do mês (saldo final deve refletir a nova despesa)
+    # 5. Verificar recalculo de saldos do mes (saldo final deve refletir a nova despesa)
     # -------------------------------------------------------------------------
-    # Recarrega o mês para obter o saldo recalculado
+    # Recarrega o mes para obter o saldo recalculado
     mes_atualizado = db_session.query(models.Mes).filter(models.Mes.id == mes.id).first()
     total_despesas = sum(d.valor for s in mes_atualizado.semanas for d in s.despesas)
-    # Saldo final = saldo_inicial + comissão (0) - total_despesas
+    # Saldo final = saldo_inicial + comissao (0) - total_despesas
     esperado = mes_atualizado.saldo_inicial - total_despesas
     assert round(mes_atualizado.saldo_final, 2) == round(esperado, 2)
 
     # -------------------------------------------------------------------------
-    # 6️⃣ Limpar overrides de dependência
+    # 6. Limpar overrides de dependencia
     # -------------------------------------------------------------------------
-    main.app.dependency_overrides.pop(utils.get_current_user, None)
+    main.app.dependency_overrides.pop(main.get_current_user, None)

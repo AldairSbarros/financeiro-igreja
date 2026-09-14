@@ -1,6 +1,8 @@
+# =adia
 # ==========================================
 # GERAL
 # ==========================================
+# Arquivos de sistema operacional e de IDEs
 .DS_Store
 Thumbs.db
 .vscode/
@@ -22,10 +24,15 @@ __pycache__/
 *$py.class
 financeiro-backend/__pycache__/
 
-# Banco de Dados SQLite (Opcional)
-# Se você quiser ignorar o banco local para não sobrescrever dados no VPS, descomente a linha abaixo.
-# financeiro-backend/financeiro.db
-
+# Cache do Pytest
+.pytest_cache/
+financeiro-backend/.pytest_cache/
+# Banco de Dados SQLite (IMPORTANTE)
+# Ignora QUALQUER arquivo .db. Isso evita que você envie acidentalmente
+# seu banco de dados de desenvolvimento local (financeiro.db, test.db) para o repositório.
+# O banco de produção no VPS deve ser criado e mantido lá.
+*.db
+*.db-journal
 # ==========================================
 # FRONTEND (Node.js/Next.js)
 # ==========================================
@@ -33,21 +40,27 @@ financeiro-backend/__pycache__/
 node_modules/
 financeiro-frontend/node_modules/
 
-# Builds do Next.js
+# Arquivos de build e cache do Next.js
 .next/
 financeiro-frontend/.next/
 out/
+build/
 
-# Logs do NPM/Yarn
+# Logs e relatórios
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+lint-staged.log*
+coverage/
 
-# Variáveis de Ambiente Locais
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+# Variáveis de Ambiente Locais (IMPORTANTE)
+# Nunca envie chaves de API, senhas ou segredos para o repositório.
+.env
+.env.*
+!.env.example
 
-.db
+financeiro-frontend/.env.local
+financeiro-frontend/.env.development.local
+financeiro-frontend/.env.test.local
+financeiro-frontend/.env.production.local

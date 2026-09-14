@@ -58,6 +58,15 @@ def login_for_access_token(db: Session = Depends(get_db), form_data: OAuth2Passw
     user = crud.get_user_by_email(db, email=form_data.username)
     if not user or not security.verify_password(form_data.password, user.hashed_password):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Email ou senha incorretos")
+
+    # --- NOVA LÓGICA DE VERIFICAÇÃO DE TENANT ATIVO ---
+    if user.funcao != 'administrador' and user.denominacao and not user.denominacao.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Acesso suspenso. Por favor, entre em contato com o suporte."
+        )
+    # --- FIM DA NOVA LÓGICA ---
+
     access_token_expires = timedelta(minutes=security.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = security.create_access_token(
         data={"sub": user.email, "funcao": user.funcao, "congregacao_id": user.congregacao_id},
@@ -72,7 +81,6 @@ def create_user_endpoint(user: schemas.UsuarioCreate, db: Session = Depends(get_
     if db_user:
         raise HTTPException(status_code=400, detail="Email already registered")
     return crud.create_user(db=db, user=user)
-
 @app.post("/denominacoes/", response_model=schemas.Denominacao)
 def create_denominacao_endpoint(denominacao: schemas.DenominacaoCreate, db: Session = Depends(get_db), current_user: models.Usuario = Depends(get_current_user)):
     # Apenas administradores podem criar denominações
@@ -100,11 +108,11 @@ def update_denominacao_endpoint(
     # Apenas administradores podem atualizar denominações
     if current_user.funcao != 'administrador':
         raise HTTPException(status_code=403, detail="Acesso negado. Apenas administradores podem atualizar denominações.")
-
+    
     db_denominacao = crud.get_denominacao_by_id(db, denominacao_id)
     if not db_denominacao:
         raise HTTPException(status_code=404, detail="Denominação não encontrada.")
-
+    
     # if current_user.denominacao_id != denominacao_id and current_user.funcao != 'administrador':
     #     raise HTTPException(status_code=403, detail="Acesso negado. Você não tem permissão para atualizar esta denominação.")
 
@@ -119,27 +127,46 @@ def delete_denominacao_endpoint(
     # Apenas administradores podem deletar denominações
     if current_user.funcao != 'administrador':
         raise HTTPException(status_code=403, detail="Acesso negado. Apenas administradores podem deletar denominações.")
-
+    
     db_denominacao = crud.get_denominacao_by_id(db, denominacao_id)
     if not db_denominacao:
         raise HTTPException(status_code=404, detail="Denominação não encontrada.")
 
     # Verificação de segurança: impedir exclusão se houver áreas ou congregações vinculadas
     if db_denominacao.areas or db_denominacao.congregacoes:
-        raise HTTPException(
+                raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Não é possível excluir a denominação pois existem áreas eclesiásticas ou congregações vinculadas a ela."
-        )
+                )
 
     crud.delete_denominacao(db=db, denominacao_id=denominacao_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+@app.put("/denominacoes/{denominacao_id}/status", response_model=schemas.Denominacao, summary="Ativa ou desativa uma Denominação (Tenant)")
+def update_denominacao_status_endpoint(
+    denominacao_id: int,
+    status_update: schemas.DenominacaoStatusUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.Usuario = Depends(get_current_user)
+):
+    """
+    Endpoint exclusivo para administradores ativarem ou desativarem o acesso
+    para todos os usuários de uma denominação.
+    """
+    if current_user.funcao != 'administrador':
+        raise HTTPException(status_code=403, detail="Acesso negado. Apenas administradores podem alterar o status de uma denominação.")
+
+    db_denominacao = crud.update_denominacao_status(db=db, denominacao_id=denominacao_id, is_active=status_update.is_active)
+    if not db_denominacao:
+        raise HTTPException(status_code=404, detail="Denominação não encontrada.")
+
+    return db_denominacao
 
 @app.post("/areas_eclesiasticas/", response_model=schemas.AreaEclesiastica)
 def create_area_endpoint(area: schemas.AreaEclesiasticaCreate, db: Session = Depends(get_db), current_user: models.Usuario = Depends(get_current_user)):
     # Apenas administradores e supervisores de denominação podem criar áreas
     if current_user.funcao not in ['administrador', 'supervisor_denominacao']:
         raise HTTPException(status_code=403, detail="Acesso negado. Apenas administradores ou supervisores de denominação podem criar áreas.")
-
     if current_user.funcao == 'supervisor_denominacao' and current_user.denominacao_id != area.denominacao_id:
         raise HTTPException(status_code=403, detail="Acesso negado. Supervisores de denominação só podem criar áreas em sua própria denominação.")
 
@@ -199,12 +226,10 @@ def delete_area_eclesiastica_endpoint(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Não é possível excluir a área eclesiástica pois existem congregações vinculadas a ela."
-        )
+    )
 
     crud.delete_area_eclesiastica(db=db, area_id=area_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-
 @app.post("/congregacoes/", response_model=schemas.Congregacao)
 def create_congregacao_endpoint(congregacao: schemas.CongregacaoCreate, db: Session = Depends(get_db), current_user: models.Usuario = Depends(get_current_user)):
     # Apenas administradores, supervisores de denominação ou supervisores de área podem criar congregações
@@ -302,11 +327,10 @@ def delete_congregacao_endpoint(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Não é possível excluir a congregação pois existem dados financeiros (meses, rendas), usuários ou dizimistas vinculados a ela."
-        )
+    )
 
     crud.delete_congregacao(db=db, congregacao_id=congregacao_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
-
 @app.get("/users/me/", response_model=schemas.Usuario)
 def read_users_me(current_user: models.Usuario = Depends(get_current_user)):
     return current_user
@@ -319,7 +343,7 @@ def update_user_password(
 ):
     if not security.verify_password(password_data.senha_atual, current_user.hashed_password):
         raise HTTPException(status_code=400, detail="Senha atual incorreta")
-        
+
     current_user.hashed_password = security.get_password_hash(password_data.nova_senha)
     db.commit()
     return {"detail": "Senha atualizada com sucesso"}
@@ -403,7 +427,7 @@ def list_dizimistas_by_congregacao_endpoint(
     # Apenas usuários da congregação (ou superiores) podem listar dizimistas
     if current_user.funcao == 'tesoureiro' and current_user.congregacao_id != congregacao_id:
         raise HTTPException(status_code=403, detail="Tesoureiros só podem listar dizimistas de sua própria congregação.")
-    
+
     return crud.get_dizimistas_ofertantes_by_congregacao(db=db, congregacao_id=congregacao_id)
 
 @app.put("/dizimistas/{dizimista_id}", response_model=schemas.DizimistaOfertante)
@@ -452,7 +476,7 @@ def delete_dizimista_ofertante_endpoint(
         pass # Tesoureiro pode deletar dizimistas da sua congregação
     else:
         raise HTTPException(status_code=403, detail="Acesso negado. Você não tem permissão para deletar este dizimista/ofertante.")
-    
+
     crud.delete_dizimista_ofertante(db=db, dizimista_id=dizimista_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -496,7 +520,7 @@ def create_renda_endpoint(
     # Apenas usuários da congregação (ou superiores) podem criar rendas
     if current_user.funcao == 'tesoureiro' and current_user.congregacao_id != db_semana.mes.congregacao_id:
         raise HTTPException(status_code=403, detail="Tesoureiros só podem criar rendas em sua própria congregação.")
-        
+
     if db_semana.mes.fechado:
         raise HTTPException(status_code=400, detail="Não é possível adicionar rendas a um mês fechado.")
 
@@ -546,7 +570,7 @@ def delete_renda_endpoint(
     # Apenas usuários da congregação (ou superiores) podem deletar rendas
     if current_user.funcao == 'tesoureiro' and current_user.congregacao_id != db_renda.congregacao_id:
         raise HTTPException(status_code=403, detail="Tesoureiros só podem deletar rendas de sua própria congregação.")
-        
+
     if db_renda.semana.mes.fechado:
         raise HTTPException(status_code=400, detail="Não é possível deletar rendas de um mês fechado.")
 
@@ -601,7 +625,7 @@ def update_renda_endpoint(
         pass # Tesoureiro pode atualizar rendas da sua congregação
     else:
         raise HTTPException(status_code=403, detail="Acesso negado. Você não tem permissão para atualizar esta renda.")
-        
+
     if db_renda.semana.mes.fechado:
         raise HTTPException(status_code=400, detail="Não é possível modificar rendas de um mês fechado.")
 
@@ -681,7 +705,7 @@ def gerar_balancete_pdf(mes_id: int, db: Session = Depends(get_db), current_user
     if not db_mes: raise HTTPException(status_code=404, detail="Mês não encontrado.")
     if current_user.congregacao_id != db_mes.congregacao_id and current_user.funcao == 'tesoureiro':
         raise HTTPException(status_code=403, detail="Acesso negado.")
-    
+
     congregacao = db_mes.congregacao
     area = congregacao.area if congregacao else None
     denominacao = area.denominacao if area else None
@@ -790,13 +814,13 @@ def gerar_backup(current_user: models.Usuario = Depends(get_current_user)):
     # Apenas administradores podem fazer backup
     if current_user.funcao != 'administrador':
         raise HTTPException(status_code=403, detail="Acesso negado. Apenas administradores podem gerar backups.")
-    
+
     db_path = "./financeiro.db"
     if not os.path.exists(db_path):
         raise HTTPException(status_code=404, detail="Banco de dados não encontrado.")
-    
+
     backup_filename = f"financeiro_backup_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
-    
+
     with open(db_path, "rb") as db_file:
         content = db_file.read()
 
@@ -811,23 +835,23 @@ async def restaurar_backup(file: UploadFile = File(...), current_user: models.Us
     # Apenas administradores podem restaurar backup
     if current_user.funcao != 'administrador':
         raise HTTPException(status_code=403, detail="Acesso negado. Apenas administradores podem restaurar backups.")
-    
+
     if not file.filename.endswith('.db'):
         raise HTTPException(status_code=400, detail="Arquivo inválido. O backup deve ser um arquivo .db")
 
     db_path = "./financeiro.db"
     temp_path = "./financeiro_temp.db"
-    
+
     try:
         # Salva o arquivo enviado temporariamente
         with open(temp_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
-        
+
         # Substitui o banco atual pelo temporário
         if os.path.exists(db_path):
             os.remove(db_path)
         os.rename(temp_path, db_path)
-        
+
         return {"detail": "Backup restaurado com sucesso. Recomendado reiniciar a aplicação (API) para evitar travamentos de cache do SQLAlchemy."}
     except Exception as e:
         if os.path.exists(temp_path):
@@ -886,7 +910,7 @@ def fechar_mes_endpoint(mes_id: int, db: Session = Depends(get_db), current_user
         raise HTTPException(status_code=404, detail="Mês não encontrado.")
     if current_user.congregacao_id != db_mes.congregacao_id and current_user.funcao == 'tesoureiro':
         raise HTTPException(status_code=403, detail="Acesso negado.")
-    
+
     db_mes.fechado = True
     db.commit()
     db.refresh(db_mes)
@@ -897,11 +921,11 @@ def reabrir_mes_endpoint(mes_id: int, db: Session = Depends(get_db), current_use
     db_mes = db.query(models.Mes).filter(models.Mes.id == mes_id).first()
     if not db_mes:
         raise HTTPException(status_code=404, detail="Mês não encontrado.")
-    
+
     # Apenas administradores podem reabrir um mês
     if current_user.funcao != 'administrador':
         raise HTTPException(status_code=403, detail="Acesso negado. Apenas administradores podem reabrir meses.")
-    
+
     db_mes.fechado = False
     db.commit()
     db.refresh(db_mes)
@@ -918,7 +942,7 @@ def adicionar_semana_endpoint(mes_id: int, semana: schemas.SemanaCreate, db: Ses
     if not db_mes: raise HTTPException(status_code=404, detail="Mês não encontrado.")
     if current_user.congregacao_id != db_mes.congregacao_id and current_user.funcao == 'tesoureiro':
         raise HTTPException(status_code=403, detail="Acesso negado.")
-    
+
     if db_mes.fechado:
         raise HTTPException(status_code=400, detail="Não é possível adicionar semanas a um mês fechado.")
 
@@ -939,7 +963,7 @@ def adicionar_despesa_endpoint(mes_id: int, semana_numero: int, despesa: schemas
     if not db_semana: raise HTTPException(status_code=404, detail="Semana não encontrada.")
     if current_user.congregacao_id != db_semana.mes.congregacao_id and current_user.funcao == 'tesoureiro':
         raise HTTPException(status_code=403, detail="Acesso negado.")
-        
+
     if db_semana.mes.fechado:
         raise HTTPException(status_code=400, detail="Não é possível adicionar despesas a um mês fechado.")
 
@@ -970,7 +994,7 @@ def remover_despesa(despesa_id: int, db: Session = Depends(get_db), current_user
     if not db_despesa: raise HTTPException(status_code=404, detail="Despesa não encontrada.")
     if current_user.congregacao_id != db_despesa.semana.mes.congregacao_id and current_user.funcao == 'tesoureiro':
         raise HTTPException(status_code=403, detail="Acesso negado.")
-        
+
     if db_despesa.semana.mes.fechado:
         raise HTTPException(status_code=400, detail="Não é possível remover despesas de um mês fechado.")
 

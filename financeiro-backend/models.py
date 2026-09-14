@@ -6,6 +6,7 @@ class Denominacao(Base):
     __tablename__ = 'denominacoes'
     id = Column(Integer, primary_key=True, index=True)
     nome = Column(String, unique=True, index=True, nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
     areas = relationship("AreaEclesiastica", back_populates="denominacao", cascade="all, delete-orphan")
     congregacoes = relationship("Congregacao", back_populates="denominacao", cascade="all, delete-orphan")
     usuarios = relationship("Usuario", back_populates="denominacao", cascade="all, delete-orphan")
@@ -109,5 +110,3 @@ class Despesa(Base):
     # Periodicidade aceita: "semanal", "quinzenal", "mensal"
     periodicidade = Column(String, nullable=True)
     semana_id = Column(Integer, ForeignKey('semanas.id'))
-    semana = relationship("Semana", back_populates="despesas")
-

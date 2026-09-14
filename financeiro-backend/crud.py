@@ -38,6 +38,18 @@ def delete_denominacao(db: Session, denominacao_id: int):
     db.commit()
     return db_denominacao
 
+def update_denominacao_status(db: Session, denominacao_id: int, is_active: bool):
+    """
+    Ativa ou desativa uma denominação (tenant).
+    """
+    db_denominacao = get_denominacao_by_id(db, denominacao_id)
+    if db_denominacao:
+        db_denominacao.is_active = is_active
+    db.add(db_denominacao)
+    db.commit()
+    db.refresh(db_denominacao)
+    return db_denominacao
+
 def get_areas_eclesiasticas_by_denominacao(
     db: Session, denominacao_id: int, skip: int = 0, limit: int = 100
 ):
@@ -65,7 +77,7 @@ def update_area_eclesiastica(db: Session, area_id: int, area: schemas.AreaEclesi
         for key, value in update_data.items():
             setattr(db_area, key, value)
         db.add(db_area)
-        db.commit()
+    db.commit()
         db.refresh(db_area)
     return db_area
 
@@ -242,6 +254,89 @@ def delete_renda(db: Session, renda_id: int):
         db.delete(db_renda)
         db.commit()
     return db_renda
+
+# --- Funções CRUD para Despesas ---
+def create_despesa(db: Session, semana_id: int, despesa: schemas.DespesaCreate):
+    db_despesa = models.Despesa(**despesa.model_dump(exclude_unset=True), semana_id=semana_id)
+    db.add(db_despesa)
+    db.commit()
+    db.refresh(db_despesa)
+    return db_despesa
+
+def duplicar_despesas_recorrentes(db: Session):
+    """
+    Duplica as despesas marcadas como recorrentes para a próxima semana válida,
+    de acordo com a periodicidade ('semanal', 'quinzenal', 'mensal').
+    """
+    despesas_criadas = []
+    import datetime
+    from dateutil.relativedelta import relativedelta
+    hoje = datetime.date.today()
+
+    # Busca todas as despesas recorrentes
+    despesas_recorrentes = db.query(models.Despesa).filter(models.Despesa.recorrente == True).all()
+
+    for despesa in despesas_recorrentes:
+        # Pega a semana atual da despesa
+        semana_atual = db.query(models.Semana).filter(models.Semana.id == despesa.semana_id).first()
+        if not semana_atual or not semana_atual.data_inicio:
+            continue
+
+        data_atual_str = semana_atual.data_inicio
+        data_atual = datetime.datetime.strptime(data_atual_str, "%Y-%m-%d").date()
+
+        proxima_data = None
+
+        if despesa.periodicidade == "semanal":
+            proxima_data = data_atual + datetime.timedelta(days=7)
+        elif despesa.periodicidade == "quinzenal":
+            proxima_data = data_atual + datetime.timedelta(days=14)
+        elif despesa.periodicidade == "mensal":
+            proxima_data = data_atual + relativedelta(months=1)
+        else:
+            continue
+
+        proxima_data_str = proxima_data.strftime("%Y-%m-%d")
+
+        # Tenta achar a próxima semana onde a data cai
+        proxima_semana = db.query(models.Semana).filter(
+            models.Semana.data_inicio <= proxima_data_str,
+            models.Semana.data_fim >= proxima_data_str,
+            models.Semana.mes.has(congregacao_id=semana_atual.mes.congregacao_id)
+        ).first()
+
+        # Fallback: Se não achar pela data exata, tenta pela ordem (ex: se é semanal e estamos na sem 1, vai pra sem 2)
+        if not proxima_semana and despesa.periodicidade == "semanal":
+            proxima_semana = db.query(models.Semana).filter(
+                models.Semana.mes_id == semana_atual.mes_id,
+                models.Semana.numero == semana_atual.numero + 1
+            ).first()
+
+        # Se achou uma semana de destino, verifica se já não duplicou
+        if proxima_semana:
+            despesa_ja_existe = db.query(models.Despesa).filter(
+                models.Despesa.semana_id == proxima_semana.id,
+                models.Despesa.descricao == despesa.descricao,
+                models.Despesa.valor == despesa.valor
+            ).first()
+
+            if not despesa_ja_existe:
+                nova_despesa = models.Despesa(
+                    descricao=despesa.descricao,
+                    valor=despesa.valor,
+                    data_registro=despesa.data_registro, # ou proxima_data se quiser a data calculada
+                    semana_id=proxima_semana.id,
+                    recorrente=True,
+                    periodicidade=despesa.periodicidade
+                )
+                db.add(nova_despesa)
+                despesas_criadas.append(nova_despesa)
+
+    db.commit()
+    for d in despesas_criadas:
+        db.refresh(d)
+
+    return despesas_criadas
 
 # --- Funções financeiras principais (atualizadas) ---
 def create_mes(db: Session, mes: schemas.MesCreate):

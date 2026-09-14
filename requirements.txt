@@ -1,0 +1,11 @@
+import sys
+import os
+
+# --------------------------------------------------------------
+# Adiciona o diretório **financeiro-backend** ao sys.path.
+# Isso permite que o import ``from main import app`` encontre o
+# arquivo ``financeiro-backend/main.py``.
+# --------------------------------------------------------------
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+backend_path = os.path.join(project_root, 'financeiro-backend')
+sys.path.insert(0, backend_path)

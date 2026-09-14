@@ -71,6 +71,7 @@ Este é o fluxo que o tesoureiro fará todas as semanas.
     *   *Dica:* Pode-se vincular opcionalmente o ID de um dizimista criado na Etapa 2.
 4.  **Lançar Despesas (Saídas):** `POST /meses/{mes_id}/semanas/{semana_numero}/despesas/`
     *   *Nota:* O recálculo de saldo é automático. O sistema atualizará o Saldo Final do Mês a cada renda ou despesa inserida.
+    *   *Recorrência:* É possível cadastrar despesas com as flags `recorrente=True` e `periodicidade` ("semanal", "quinzenal" ou "mensal"). Use `POST /despesas/recorrentes/duplicar` para gerar as cópias automáticas.
 
 ### Etapa 4: Fechamento e Relatórios
 Ao final do mês, o tesoureiro gera o balancete e congela os dados.
@@ -113,6 +114,7 @@ A API possui mecanismos de defesa robustos:
 | **CRUD** | `/meses/{id}/semanas/` | Gerenciamento das semanas (máximo 5 por mês). |
 | **CRUD** | `/semanas/{id}/rendas/` | Lançamento e gestão de Dízimos e Ofertas. |
 | **POST** | `/meses/{id}/semanas/{numero}/despesas/`| Lançamento de despesas de uma semana específica. |
+| **POST** | `/despesas/recorrentes/duplicar`| Duplica as despesas marcadas como recorrentes para o próximo período. |
 | **GET** | `/meses/{id}/balancete/` | Resumo financeiro total do mês em JSON. |
 | **GET** | `/meses/{id}/balancete/pdf` | Gera e baixa o relatório em PDF pronto para impressão. |
 

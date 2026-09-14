@@ -1,8 +1,8 @@
 import sys
 import os
 
-# Adiciona o diretório pai (financeiro-backend) ao sys.path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+# Adiciona o diretório financeiro-backend ao sys.path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'financeiro-backend')))
 
 import pytest
 from fastapi.testclient import TestClient

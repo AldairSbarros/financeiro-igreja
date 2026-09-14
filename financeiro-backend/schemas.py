@@ -8,6 +8,7 @@ class DespesaBase(BaseModel):
     valor: float
     data_registro: Optional[date] = None # Adicionado data_registro opcional para despesa
     recorrente: Optional[bool] = False # NOVA FLAG: Despesa Recorrente
+    periodicidade: Optional[str] = None # NOVA FLAG: 'semanal', 'quinzenal', 'mensal'
 
 class DespesaCreate(DespesaBase):
     pass
@@ -179,6 +180,7 @@ class AreaEclesiastica(AreaEclesiasticaBase):
 
 class DenominacaoBase(BaseModel):
     nome: str
+    is_active: bool = True
 
 class DenominacaoCreate(DenominacaoBase):
     pass
@@ -191,6 +193,10 @@ class Denominacao(DenominacaoBase):
     areas: List[AreaEclesiastica] = []
     congregacoes: List[Congregacao] = []
     model_config = ConfigDict(from_attributes=True)
+
+# Novo schema para a atualização de status
+class DenominacaoStatusUpdate(BaseModel):
+    is_active: bool
 
 class UsuarioBase(BaseModel):
     email: EmailStr
@@ -232,4 +238,5 @@ class DespesaCreateData(BaseModel):
   recorrente: Optional[bool] = False
   # Periodicidade aceita: "semanal", "quinzenal", "mensal"
   periodicidade: Optional[str] = None
+
 
