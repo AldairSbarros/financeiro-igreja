@@ -2,10 +2,10 @@ from datetime import timedelta
 import datetime
 from typing import List
 
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, status, APIRouter # Adicionado APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from fastapi.responses import Response
+from fastapi.responses import Response, JSONResponse # Adicionado JSONResponse
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, desc
@@ -53,26 +53,149 @@ def get_current_user(db: Session = Depends(get_db), token: str = Depends(oauth2_
     if user is None: raise credentials_exception
     return user
 
+# --- NOVA DEPENDÊNCIA: OBTÉM O SUPERUSUÁRIO ATUAL ---
+def get_current_superuser(current_user: models.Usuario = Depends(get_current_user)):
+    """
+    Dependência que verifica se o usuário logado é um superuser.
+    Bloqueia o acesso caso não seja.
+    """
+    if not current_user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Acesso negado. Esta ação requer privilégios de superusuário."
+        )
+    return current_user
+
 @app.post("/token", response_model=schemas.Token)
 def login_for_access_token(db: Session = Depends(get_db), form_data: OAuth2PasswordRequestForm = Depends()):
     user = crud.get_user_by_email(db, email=form_data.username)
     if not user or not security.verify_password(form_data.password, user.hashed_password):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Email ou senha incorretos")
 
-    # --- NOVA LÓGICA DE VERIFICAÇÃO DE TENANT ATIVO ---
-    if user.funcao != 'administrador' and user.denominacao and not user.denominacao.is_active:
-        raise HTTPException(
+    # --- LÓGICA DE VERIFICAÇÃO DE TENANT ATIVO (Superuser ignora) ---
+    # Se o usuário não é um superuser e sua denominação está inativa, bloqueia o login
+    if not user.is_superuser and user.denominacao and not user.denominacao.is_active:
+                raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Acesso suspenso. Por favor, entre em contato com o suporte."
-        )
-    # --- FIM DA NOVA LÓGICA ---
+                )
+    # --- FIM DA LÓGICA ---
 
     access_token_expires = timedelta(minutes=security.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = security.create_access_token(
-        data={"sub": user.email, "funcao": user.funcao, "congregacao_id": user.congregacao_id},
+        data={"sub": user.email, "funcao": user.funcao, "is_superuser": user.is_superuser, "denominacao_id": user.denominacao_id, "area_id": user.area_id, "congregacao_id": user.congregacao_id},
+        expires_delta=access_token_expires
+                )
+    return {"access_token": access_token, "token_type": "bearer"}
+
+# --- Endpoints de Setup Inicial (Públicos) ---
+@app.get("/setup/status", summary="Verifica se o setup inicial já foi concluído")
+def get_setup_status(db: Session = Depends(get_db)):
+    """
+    Verifica se existe um superusuário no banco.
+    Usado pelo frontend para decidir se deve mostrar a tela de setup inicial ou a de login.
+    """
+    superuser = db.query(models.Usuario).filter(models.Usuario.is_superuser == True).first()
+    if superuser:
+        return {"setup_complete": True}
+    return {"setup_complete": False}
+
+@app.post("/setup/initialize", response_model=schemas.Usuario, status_code=status.HTTP_201_CREATED, summary="Executa o setup inicial do sistema")
+def initialize_setup(setup_payload: schemas.SetupPayload, db: Session = Depends(get_db)):
+    """
+    Cria o superusuário, a primeira denominação e seu administrador inicial.
+    Só pode ser chamado se nenhum superusuário existir.
+    """
+    # 1. Verifica se já existe um superusuário
+    existing_superuser = db.query(models.Usuario).filter(models.Usuario.is_superuser == True).first()
+    if existing_superuser:
+        raise HTTPException(status_code=400, detail="Setup já realizado. Superusuário já existe.")
+
+    # 2. Cria o Superusuário
+    superuser_data = schemas.UsuarioCreate(
+        email=setup_payload.superuser_email,
+        password=setup_payload.superuser_password,
+        funcao="superuser",
+        is_superuser=True,
+        denominacao_id=None # Superuser não pertence a uma denominação
+    )
+    new_superuser = crud.create_user(db, user=superuser_data)
+
+    # 3. Cria a primeira denominação (tenant)
+    denominacao_data = schemas.DenominacaoCreate(
+        nome=setup_payload.tenant.nome_denominacao
+    )
+    new_denominacao = crud.create_denominacao(db, denominacao=denominacao_data)
+
+    # 4. Cria o administrador para essa denominação
+    admin_tenant_data = schemas.UsuarioCreate(
+        email=setup_payload.tenant.admin_email,
+        password=setup_payload.tenant.admin_password,
+        funcao="administrador",
+        denominacao_id=new_denominacao.id,
+        is_superuser=False # Não é um superuser
+    )
+    crud.create_user(db, user=admin_tenant_data)
+
+    return new_superuser
+
+# --- APIRouter para o Painel Master (Exclusivo para Superuser) ---
+master_router = APIRouter(
+    prefix="/master",
+    tags=["Painel Master (Superuser)"],
+    dependencies=[Depends(get_current_superuser)] # Todos os endpoints neste router exigem Superuser
+)
+
+@master_router.get("/stats", response_model=schemas.MasterStats, summary="Estatísticas globais da plataforma")
+def get_master_statistics_endpoint(db: Session = Depends(get_db)):
+    """
+    Retorna as estatísticas globais da plataforma para o superusuário.
+    """
+    stats = crud.get_platform_statistics(db)
+    return stats
+
+@master_router.get("/tenants", response_model=List[schemas.Denominacao], summary="Lista todas as Denominações (Tenants)")
+def list_tenants_endpoint(db: Session = Depends(get_db)):
+    """
+    Lista todas as denominações (clientes) registradas no sistema.
+    """
+    return crud.get_denominacoes(db)
+
+@master_router.put("/tenants/{tenant_id}/status", response_model=schemas.Denominacao, summary="Ativa/Desativa uma Denominação (Tenant)")
+def set_tenant_status_endpoint(
+    tenant_id: int,
+    status_update: schemas.DenominacaoStatusUpdate,
+    db: Session = Depends(get_db)
+):
+    """
+    Endpoint para ativar ou desativar o acesso de uma Denominação (Tenant).
+    Um tenant inativo não permite que seus usuários (exceto superusers) façam login.
+    """
+    db_denominacao = crud.update_denominacao_status(db=db, denominacao_id=tenant_id, is_active=status_update.is_active)
+    if not db_denominacao:
+        raise HTTPException(status_code=404, detail="Denominação não encontrada.")
+    return db_denominacao
+
+@master_router.post("/users/{user_id}/impersonate", response_model=schemas.Token, summary="Personifica um usuário para fins de suporte")
+def impersonate_user_endpoint(user_id: int, db: Session = Depends(get_db)):
+    """
+    Gera um token de acesso para um usuário específico, permitindo ao superusuário
+    "personificar" essa conta para fins de depuração e suporte.
+    """
+    user_to_impersonate = db.query(models.Usuario).filter(models.Usuario.id == user_id).first()
+    if not user_to_impersonate:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado.")
+
+    access_token_expires = timedelta(minutes=security.ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = security.create_access_token(
+        data={"sub": user_to_impersonate.email, "funcao": user_to_impersonate.funcao, "is_superuser": user_to_impersonate.is_superuser, "denominacao_id": user_to_impersonate.denominacao_id, "area_id": user_to_impersonate.area_id, "congregacao_id": user_to_impersonate.congregacao_id},
         expires_delta=access_token_expires
     )
     return {"access_token": access_token, "token_type": "bearer"}
+
+
+# --- Registrar o Router do Painel Master ---
+app.include_router(master_router)
 
 # --- Endpoints de Setup e Usuários ---
 @app.post("/usuarios/", response_model=schemas.Usuario)
@@ -108,11 +231,11 @@ def update_denominacao_endpoint(
     # Apenas administradores podem atualizar denominações
     if current_user.funcao != 'administrador':
         raise HTTPException(status_code=403, detail="Acesso negado. Apenas administradores podem atualizar denominações.")
-    
+
     db_denominacao = crud.get_denominacao_by_id(db, denominacao_id)
     if not db_denominacao:
         raise HTTPException(status_code=404, detail="Denominação não encontrada.")
-    
+
     # if current_user.denominacao_id != denominacao_id and current_user.funcao != 'administrador':
     #     raise HTTPException(status_code=403, detail="Acesso negado. Você não tem permissão para atualizar esta denominação.")
 
@@ -127,7 +250,7 @@ def delete_denominacao_endpoint(
     # Apenas administradores podem deletar denominações
     if current_user.funcao != 'administrador':
         raise HTTPException(status_code=403, detail="Acesso negado. Apenas administradores podem deletar denominações.")
-    
+
     db_denominacao = crud.get_denominacao_by_id(db, denominacao_id)
     if not db_denominacao:
         raise HTTPException(status_code=404, detail="Denominação não encontrada.")

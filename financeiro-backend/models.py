@@ -1,3 +1,4 @@
+import datetime
 from sqlalchemy import create_engine, Column, Integer, String, Float, ForeignKey, Date, Boolean # Importado Date e Boolean
 from sqlalchemy.orm import relationship, sessionmaker
 from database import Base
@@ -5,8 +6,9 @@ from database import Base
 class Denominacao(Base):
     __tablename__ = 'denominacoes'
     id = Column(Integer, primary_key=True, index=True)
-    nome = Column(String, unique=True, index=True, nullable=False)
+        nome = Column(String, unique=True, index=True, nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
+    data_criacao = Column(Date, default=datetime.date.today, nullable=False)
     areas = relationship("AreaEclesiastica", back_populates="denominacao", cascade="all, delete-orphan")
     congregacoes = relationship("Congregacao", back_populates="denominacao", cascade="all, delete-orphan")
     usuarios = relationship("Usuario", back_populates="denominacao", cascade="all, delete-orphan")
@@ -65,8 +67,9 @@ class Usuario(Base):
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
-    funcao = Column(String, nullable=False)
-    denominacao_id = Column(Integer, ForeignKey('denominacoes.id'), nullable=False)
+        funcao = Column(String, nullable=False)
+    is_superuser = Column(Boolean, default=False, nullable=False)
+    denominacao_id = Column(Integer, ForeignKey('denominacoes.id'), nullable=True)
     area_id = Column(Integer, ForeignKey('areas_eclesiasticas.id'), nullable=True)
     congregacao_id = Column(Integer, ForeignKey('congregacoes.id'), nullable=True)
     denominacao = relationship("Denominacao", back_populates="usuarios")

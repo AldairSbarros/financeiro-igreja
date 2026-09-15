@@ -1,0 +1,44 @@
+# docker-compose.yml para o Sistema Financeiro (Independente)
+# NÃO inclua a linha 'version: 3.8' se o seu Docker Compose é mais recente (evita o WARN)
+name: financeiro
+
+services:
+  # ===================================
+  # 🧠 FINANCEIRO BACKEND (API Python)
+  # ===================================
+  backend:
+    container_name: financeiro_backend
+    build:
+      context: ./financeiro-backend
+
+      dockerfile: ./financeiro-backend/Dockerfile # <--- Caminho explícito do Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8001:8000"
+    volumes:
+      - ./financeiro_data:/app
+    networks:
+      - financeiro_network
+
+  # =================================
+  # 🎨 FINANCEIRO FRONTEND (Next.js)
+  # =================================
+  frontend:
+    container_name: financeiro_frontend
+    build:
+      context: ./financeiro-frontend
+
+      dockerfile: ./financeiro-frontend/Dockerfile # <--- Caminho explícito do Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: /financeiro/api 
+    restart: unless-stopped
+    ports:
+      - "3002:3000"
+    depends_on:
+      - backend
+    networks:
+      - financeiro_network
+
+networks:
+  financeiro_network:
+    driver: bridge

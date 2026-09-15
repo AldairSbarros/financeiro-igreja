@@ -455,3 +455,93 @@ def recalcular_saldos_mes(db: Session, mes_id: int):
     db.add(db_mes)
     db.commit()
 
+
+# ... (conteúdo existente do crud.py) ...
+
+# --- Funções do Painel Master ---
+import datetime # Adicionado import para datetime para usar em estatísticas
+from sqlalchemy import case # Adicionado case para uso em estatísticas
+import os
+
+def get_platform_statistics(db: Session):
+    """
+    Retorna as estatísticas globais da plataforma para o superusuário.
+    """
+    total_tenants = db.query(models.Denominacao).count()
+    tenants_ativos = db.query(models.Denominacao).filter(models.Denominacao.is_active == True).count()
+    total_usuarios = db.query(models.Usuario).filter(models.Usuario.is_superuser == False).count()
+
+    # Soma total das rendas em todas as congregações
+    volume_financeiro_global = db.query(func.sum(models.Renda.valor)).scalar() or 0.0
+
+    # Crescimento de tenants por mês
+    # Usando data_criacao do modelo Denominacao
+    crescimento_query = db.query(
+        func.strftime('%Y-%m', models.Denominacao.data_criacao).label('mes'),
+        func.count(models.Denominacao.id).label('quantidade')
+    ).group_by('mes').order_by('mes').all()
+
+    crescimento_tenants_mensal = {row.mes: row.quantidade for row in crescimento_query}
+
+    # Top 5 tenants mais ativos (exemplo: por número de transações)
+    # Contabiliza tanto rendas quanto despesas para "atividade"
+    ranking_tenants_query = db.query(
+        models.Denominacao.id,
+        models.Denominacao.nome,
+        models.Denominacao.is_active,
+        models.Denominacao.data_criacao,
+        func.count(models.Usuario.id).label('total_usuarios'),
+        func.count(case((models.Renda.id != None, 1))).label('total_rendas'),
+        func.count(case((models.Despesa.id != None, 1))).label('total_despesas')
+    ).outerjoin(models.Usuario, models.Denominacao.id == models.Usuario.denominacao_id) \
+     .outerjoin(models.Congregacao, models.Denominacao.id == models.Congregacao.denominacao_id) \
+     .outerjoin(models.Semana, models.Congregacao.id == models.Semana.congregacao_id) \
+     .outerjoin(models.Renda, models.Semana.id == models.Renda.semana_id) \
+     .outerjoin(models.Despesa, models.Semana.id == models.Despesa.semana_id) \
+     .group_by(models.Denominacao.id, models.Denominacao.nome, models.Denominacao.is_active, models.Denominacao.data_criacao) \
+     .order_by(func.count(models.Renda.id).desc(), func.count(models.Despesa.id).desc()) \
+     .limit(5).all()
+
+    ranking_tenants_ativos = []
+    for den_id, nome, is_active, data_criacao, total_usuarios, total_rendas, total_despesas in ranking_tenants_query:
+        ranking_tenants_ativos.append(schemas.TenantStats(
+            id=den_id,
+            nome=nome,
+            is_active=is_active,
+            data_criacao=data_criacao,
+            total_usuarios=total_usuarios,
+            total_transacoes=total_rendas + total_despesas # Soma de rendas e despesas
+        ))
+
+    # Obter o tamanho do arquivo do banco de dados (apenas se for SQLite)
+    # Assumindo que o banco de dados é um arquivo 'financeiro.db'
+    db_file_size_mb = 0.0
+    try:
+        if db.bind.url.drivername == "sqlite":
+            db_path = str(db.bind.url.database) # Get the path from the connection string
+            if db_path == ":memory:": # Handle in-memory database for tests
+                db_file_size_mb = 0.0
+            elif db_path:
+                # Adjust path to handle relative path in Docker correctly
+                # Assuming the financeiro.db is at /app/financeiro.db
+                if not db_path.startswith('/'): # If it's a relative path
+                    db_path = f'/app/{db_path.split("/")[-1]}' # Take only the filename
+
+                if os.path.exists(db_path):
+                    db_file_size_mb = os.path.getsize(db_path) / (1024 * 1024) # Em MB
+    except Exception as e:
+        print(f"Erro ao obter tamanho do DB: {e}")
+        db_file_size_mb = 0.0
+
+
+    return schemas.MasterStats(
+        total_tenants=total_tenants,
+        tenants_ativos=tenants_ativos,
+        tenants_suspensos=total_tenants - tenants_ativos,
+        total_usuarios=total_usuarios,
+        volume_financeiro_global=volume_financeiro_global,
+        crescimento_tenants_mensal=crescimento_tenants_mensal,
+        ranking_tenants_ativos=ranking_tenants_ativos,
+        tamanho_db_mb=round(db_file_size_mb, 2)
+    )
+

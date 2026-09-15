@@ -1,60 +1,113 @@
-import requests
-import json
+"use client";
 
-BASE_URL = "http://127.0.0.1:8000"
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { toast } from "sonner";
+import { useAuth } from "@/hooks/useAuth";
+import { api } from "@/lib/api"; // Import do cliente de API
 
-def create_user(email, password, funcao, denominacao_id, area_id=None, congregacao_id=None):
-    user_data = {
-        "email": email,
-        "password": password,
-        "funcao": funcao,
-        "denominacao_id": denominacao_id,
-        "area_id": area_id,
-        "congregacao_id": congregacao_id
+export default function LoginPage() {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const router = useRouter();
+  const { login } = useAuth();
+  const [setupRequired, setSetupRequired] = useState<boolean | null>(null); // null = carregando
+  const [loadingSetup, setLoadingSetup] = useState(true);
+
+  useEffect(() => {
+    const checkSetupStatus = async () => {
+      try {
+        const response = await api.get("/setup/status");
+        if (!response.data.setup_complete) {
+          setSetupRequired(true);
+          router.push("/setup");
+        } else {
+          setSetupRequired(false);
+        }
+      } catch (error) {
+        console.error("Erro ao verificar status do setup:", error);
+        toast.error("Erro ao verificar status inicial do sistema.");
+      } finally {
+        setLoadingSetup(false);
+      }
+    };
+    checkSetupStatus();
+  }, [router]);
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    try {
+      await login(email, password);
+      toast.success("Login realizado com sucesso!");
+      
+      // Redireciona appropriately based on user role
+      // You might want to fetch user details from the auth context to check is_superuser
+      router.push("/dashboard"); // For now, redirect to dashboard. We can refine this.
+    } catch (error) {
+      toast.error("Email ou senha inválidos.");
+    } finally {
+      setIsLoading(false);
     }
-    response = requests.post(f"{BASE_URL}/usuarios/", json=user_data)
-    if response.status_code == 200:
-        print(f"User {email} created successfully.")
-        return response.json()
-    else:
-        print(f"Error creating user {email}: {response.text}")
-        return None
+  };
 
-def main():
-    # Criar Denominação
-    denominacao_data = {"nome": "Assembleia de Deus"}
-    response = requests.post(f"{BASE_URL}/denominacoes/", json=denominacao_data)
-    if response.status_code == 200:
-        denominacao = response.json()
-        print(f"Denominação '{denominacao['nome']}' criada com ID: {denominacao['id']}")
-        denominacao_id = denominacao['id']
+  if (loadingSetup || setupRequired === null) {
+    return (
+      <main className="flex min-h-screen flex-col items-center justify-center p-4 bg-slate-950">
+        <p className="text-white">Carregando status do sistema...</p>
+      </main>
+    );
+  }
 
-        # Criar Área Eclesiástica
-        area_data = {"nome": "Area 1", "denominacao_id": denominacao_id}
-        response = requests.post(f"{BASE_URL}/areas_eclesiasticas/", json=area_data)
-        if response.status_code == 200:
-            area = response.json()
-            print(f"Área '{area['nome']}' criada com ID: {area['id']}")
-            area_id = area['id']
+  // Se o setup for necessário e já fomos redirecionados, não renderiza o formulário de login
+  if (setupRequired) {
+    return null;
+  }
 
-            # Criar Congregação
-            congregacao_data = {"nome": "Congregação Sede", "denominacao_id": denominacao_id, "area_id": area_id}
-            response = requests.post(f"{BASE_URL}/congregacoes/", json=congregacao_data)
-            if response.status_code == 200:
-                congregacao = response.json()
-                print(f"Congregação '{congregacao['nome']}' criada com ID: {congregacao['id']}")
-                congregacao_id = congregacao['id']
-
-                # Criar Usuários
-                create_user("admin@igreja.com", "admin123", "admin", denominacao_id, area_id, congregacao_id)
-                create_user("tesoureiro@igreja.com", "tesoureiro123", "tesoureiro", denominacao_id, area_id, congregacao_id)
-
-            else:
-                print(f"Erro ao criar congregação: {response.text}")
-        else:
-            print(f"Erro ao criar área: {response.text}")
-    else:
-        print(f"Erro ao criar denominação: {response.text}")
-
-if __name__ == "__main__":
-    main()
+  return (
+    <main className="flex min-h-screen flex-col items-center justify-center p-4 bg-slate-950">
+      <Card className="w-full max-w-sm bg-slate-900 border-slate-800 text-white">
+        <CardHeader className="text-center">
+          <CardTitle className="text-2xl">Painel Financeiro</CardTitle>
+          <CardDescription>Acesse com suas credenciais</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleLogin} className="grid gap-4">
+            <div className="grid gap-2">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                  id="email"
+                  type="email"
+                  placeholder="seu.email@exemplo.com"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="bg-slate-800 border-slate-700 focus:ring-emerald-500"
+                />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="password">Senha</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  placeholder="••••••••"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="bg-slate-800 border-slate-700 focus:ring-emerald-500"
+                />
+            </div>
+            <Button type="submit" className="w-full mt-2 bg-emerald-600 hover:bg-emerald-500" disabled={isLoading}>
+              {isLoading ? "Verificando..." : "Entrar"}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+    </main>
+  );
+}

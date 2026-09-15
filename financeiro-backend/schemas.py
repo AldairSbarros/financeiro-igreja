@@ -204,7 +204,8 @@ class UsuarioBase(BaseModel):
 class UsuarioCreate(UsuarioBase):
     password: str
     funcao: str
-    denominacao_id: int
+    is_superuser: bool = False
+    denominacao_id: Optional[int] = None
     area_id: Optional[int] = None
     congregacao_id: Optional[int] = None
 
@@ -215,12 +216,13 @@ class UsuarioUpdatePassword(BaseModel):
 class Usuario(UsuarioBase):
     id: int
     funcao: str
-    denominacao_id: int
-    denominacao: DenominacaoBase # Adicionado
+    is_superuser: bool
+    denominacao_id: Optional[int] = None
+    denominacao: Optional[DenominacaoBase] = None
     area_id: Optional[int] = None
-    area_responsavel: Optional[AreaEclesiasticaBase] = None # Adicionado
+    area_responsavel: Optional[AreaEclesiasticaBase] = None
     congregacao_id: Optional[int] = None
-    congregacao: Optional[CongregacaoBase] = None # Adicionado
+    congregacao: Optional[CongregacaoBase] = None
     model_config = ConfigDict(from_attributes=True)
 
 class Token(BaseModel):
@@ -230,13 +232,41 @@ class Token(BaseModel):
 class TokenData(BaseModel):
     email: Optional[str] = None
 
-class DespesaCreateData(BaseModel):
-  descricao: str
-  valor: float
-  data_registro: Optional[date] = None
-  # Nova flag que indica se a despesa será recorrente
-  recorrente: Optional[bool] = False
-  # Periodicidade aceita: "semanal", "quinzenal", "mensal"
-  periodicidade: Optional[str] = None
+# ... (final do arquivo)
+# --- Schemas do Painel Master (Superuser) ---
+
+class InitialTenantCreate(BaseModel):
+    """Schema para criar a primeira denominação durante o setup."""
+    nome_denominacao: str
+    admin_email: EmailStr
+    admin_password: str
+
+class SetupPayload(BaseModel):
+    """Schema completo para o payload do endpoint de setup."""
+    superuser_email: EmailStr
+    superuser_password: str
+    tenant: InitialTenantCreate
+
+class TenantStats(BaseModel):
+    """Estatísticas individuais de um tenant."""
+    id: int
+    nome: str
+    is_active: bool
+    data_criacao: date # Assumindo que o modelo terá um campo de data
+    total_usuarios: int
+    total_transacoes: int # Soma de rendas e despesas
+
+class MasterStats(BaseModel):
+    """Schema para o dashboard principal do superuser."""
+    total_tenants: int
+    tenants_ativos: int
+    tenants_suspensos: int
+    total_usuarios: int
+    volume_financeiro_global: float
+    crescimento_tenants_mensal: dict[str, int] # Ex: {"2024-01": 5, "2024-02": 8}
+    ranking_tenants_ativos: List[TenantStats]
+    tamanho_db_mb: float
+
+
 
 
