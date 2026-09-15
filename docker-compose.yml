@@ -10,7 +10,6 @@ services:
     container_name: financeiro_backend
     build:
       context: ./financeiro-backend
-
       dockerfile: ./financeiro-backend/Dockerfile # <--- Caminho explícito do Dockerfile
     restart: unless-stopped
     ports:
@@ -27,7 +26,6 @@ services:
     container_name: financeiro_frontend
     build:
       context: ./financeiro-frontend
-
       dockerfile: ./financeiro-frontend/Dockerfile # <--- Caminho explícito do Dockerfile
       args:
         NEXT_PUBLIC_API_URL: /financeiro/api 
